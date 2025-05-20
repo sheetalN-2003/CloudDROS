@@ -3,4 +3,4 @@ pyrebase4
 firebase-admin
 streamlit-folium
 folium
-requests
+python-dotenv
