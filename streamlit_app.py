@@ -1,38 +1,53 @@
 import streamlit as st
-from streamlit_firebase import login_user
 import firebase_admin
 from firebase_admin import credentials, firestore
 import os
 import json
 
-# Initialize Firebase Admin
 def initialize_firebase_admin():
     if not firebase_admin._apps:
         try:
-            # For Streamlit Cloud secrets
+            # Get private key from environment
+            private_key = os.environ.get("FIREBASE_PRIVATE_KEY")
+            
+            # Debugging: Check if private key exists
+            if st.secrets.get("DEBUG_MODE", False):
+                st.write(f"Private key exists: {private_key is not None}")
+            
+            if not private_key:
+                st.error("Firebase private key not found in environment variables")
+                return None
+                
+            # Ensure proper newline formatting
+            private_key = private_key.replace("\\n", "\n")
+            
             cred_dict = {
-                "type": os.environ.get("FIREBASE_TYPE"),
+                "type": os.environ.get("FIREBASE_TYPE", "service_account"),
                 "project_id": os.environ.get("FIREBASE_PROJECT_ID"),
                 "private_key_id": os.environ.get("FIREBASE_PRIVATE_KEY_ID"),
-                "private_key": os.environ.get("FIREBASE_PRIVATE_KEY").replace("\\n", "\n"),
+                "private_key": private_key,
                 "client_email": os.environ.get("FIREBASE_CLIENT_EMAIL"),
                 "client_id": os.environ.get("FIREBASE_CLIENT_ID"),
-                "auth_uri": os.environ.get("FIREBASE_AUTH_URI"),
-                "token_uri": os.environ.get("FIREBASE_TOKEN_URI"),
-                "auth_provider_x509_cert_url": os.environ.get("FIREBASE_AUTH_PROVIDER_CERT_URL"),
+                "auth_uri": os.environ.get("FIREBASE_AUTH_URI", "https://accounts.google.com/o/oauth2/auth"),
+                "token_uri": os.environ.get("FIREBASE_TOKEN_URI", "https://oauth2.googleapis.com/token"),
+                "auth_provider_x509_cert_url": os.environ.get("FIREBASE_AUTH_PROVIDER_CERT_URL", "https://www.googleapis.com/oauth2/v1/certs"),
                 "client_x509_cert_url": os.environ.get("FIREBASE_CLIENT_CERT_URL")
             }
             
-            # Validate credentials
-            if not all(cred_dict.values()):
-                st.error("Missing Firebase Admin credentials in environment variables")
-                return None
-                
+            # Validate all required fields
+            required_fields = ["project_id", "private_key", "client_email"]
+            for field in required_fields:
+                if not cred_dict.get(field):
+                    st.error(f"Missing required Firebase credential: {field}")
+                    return None
+            
             cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred)
             return firestore.client()
+            
         except Exception as e:
             st.error(f"Firebase Admin initialization failed: {str(e)}")
+            st.error("Please check your Firebase credentials configuration")
             return None
     return firestore.client()
 
@@ -51,7 +66,7 @@ def show_login():
             st.session_state["user"] = user
             st.session_state["user_email"] = email
             st.success("Logged in successfully!")
-            st.experimental_rerun()
+            st.rerun()  # Changed from experimental_rerun()
         else:
             st.error("Login failed. Check your credentials.")
 
@@ -93,9 +108,11 @@ def main():
     else:
         if st.sidebar.button("Logout"):
             st.session_state.clear()
-            st.experimental_rerun()
+            st.rerun()  # Changed from experimental_rerun()
         show_dashboard()
 
 if __name__ == "__main__":
     if db:  # Only run if Firestore initialized successfully
         main()
+    else:
+        st.error("Failed to initialize Firebase. Please check your configuration.")
