@@ -1,13 +1,13 @@
 import pyrebase
+import os
 
 firebaseConfig = {
-  "apiKey": "YOUR_API_KEY",
-  "authDomain": "YOUR_PROJECT.firebaseapp.com",
-  "databaseURL": "",
-  "projectId": "YOUR_PROJECT",
-  "storageBucket": "YOUR_PROJECT.appspot.com",
-  "messagingSenderId": "...",
-  "appId": "..."
+  "apiKey": os.environ.get("FIREBASE_API_KEY"),
+  "authDomain": os.environ.get("FIREBASE_PROJECT_ID") + ".firebaseapp.com",
+  "projectId": os.environ.get("FIREBASE_PROJECT_ID"),
+  "storageBucket": os.environ.get("FIREBASE_PROJECT_ID") + ".appspot.com",
+  "messagingSenderId": os.environ.get("FIREBASE_MESSAGING_SENDER_ID"),
+  "appId": os.environ.get("FIREBASE_APP_ID")
 }
 
 firebase = pyrebase.initialize_app(firebaseConfig)
