@@ -4,3 +4,4 @@ firebase-admin
 streamlit-folium
 folium
 python-dotenv
+setuptools
