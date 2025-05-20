@@ -6,7 +6,7 @@ import os
 import folium
 from streamlit_folium import folium_static
 from geopy.geocoders import Nominatim
-import pyrebase4 as pyrebase  # Changed to pyrebase4
+import pyrebase  # Changed to pyrebase4
 
 # Initialize Firebase Admin
 def initialize_firebase_admin():
