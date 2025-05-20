@@ -1,5 +1,4 @@
 streamlit
-pyrebase4
 firebase-admin
 streamlit-folium
 folium
@@ -12,3 +11,4 @@ requests
 gunicorn
 geopy
 pyrebase
+pyrebase4
