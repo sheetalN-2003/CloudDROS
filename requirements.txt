@@ -1,5 +1,5 @@
 streamlit
-pyrebase4>=4.0.0
+pyrebase4
 firebase-admin
 streamlit-folium
 folium
@@ -7,3 +7,5 @@ python-dotenv
 geopy
 requests
 pycryptodome
+gcloud
+oauth2client
