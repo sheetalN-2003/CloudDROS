@@ -1,35 +1,26 @@
 import streamlit as st
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, auth as admin_auth
 from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 import os
 import folium
 from streamlit_folium import folium_static
 from geopy.geocoders import Nominatim
 from datetime import datetime
-
-# Try both pyrebase and pyrebase4 imports
-try:
-    import pyrebase4 as pyrebase
-except ImportError:
-    try:
-        import pyrebase
-    except ImportError as e:
-        st.error(f"Failed to import pyrebase: {str(e)}")
-        st.stop()
+import requests
+import json
+from jose import jwt
 
 # Initialize Firebase Admin
-def initialize_firebase_admin():
+def initialize_firebase():
     if not firebase_admin._apps:
         try:
-            # Get private key from environment
             private_key = os.environ.get("FIREBASE_PRIVATE_KEY")
             
             if not private_key:
-                st.error("Firebase private key not found in environment variables")
+                st.error("Firebase private key not found")
                 return None
                 
-            # Ensure proper newline formatting
             private_key = private_key.replace("\\n", "\n")
             
             cred_dict = {
@@ -45,41 +36,42 @@ def initialize_firebase_admin():
                 "client_x509_cert_url": os.environ.get("FIREBASE_CLIENT_CERT_URL")
             }
             
-            # Validate all required fields
-            required_fields = ["project_id", "private_key", "client_email"]
-            for field in required_fields:
-                if not cred_dict.get(field):
-                    st.error(f"Missing required Firebase credential: {field}")
-                    return None
-            
             cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred)
             return firestore.client()
         except Exception as e:
-            st.error(f"Firebase Admin initialization failed: {str(e)}")
+            st.error(f"Firebase initialization failed: {str(e)}")
             return None
     return firestore.client()
 
-# Initialize Firebase Auth with fallback
-def initialize_firebase_auth():
+# Custom Firebase Auth Implementation
+def sign_in_with_email_password(email, password):
+    api_key = os.environ.get("FIREBASE_API_KEY")
+    if not api_key:
+        st.error("Firebase API key not configured")
+        return None
+        
+    url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={api_key}"
+    
     try:
-        firebaseConfig = {
-            "apiKey": os.environ.get("FIREBASE_API_KEY"),
-            "authDomain": f"{os.environ.get('FIREBASE_PROJECT_ID')}.firebaseapp.com",
-            "projectId": os.environ.get("FIREBASE_PROJECT_ID"),
-            "storageBucket": f"{os.environ.get('FIREBASE_PROJECT_ID')}.appspot.com",
-            "messagingSenderId": os.environ.get("FIREBASE_MESSAGING_SENDER_ID"),
-            "appId": os.environ.get("FIREBASE_APP_ID"),
-            "databaseURL": ""  # Only if using Realtime Database
-        }
-        return pyrebase.initialize_app(firebaseConfig).auth()
+        response = requests.post(url, json={
+            "email": email,
+            "password": password,
+            "returnSecureToken": True
+        })
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            error_msg = response.json().get("error", {}).get("message", "Unknown error")
+            st.error(f"Login failed: {error_msg}")
+            return None
     except Exception as e:
-        st.error(f"Firebase Auth initialization failed: {str(e)}")
+        st.error(f"Authentication error: {str(e)}")
         return None
 
 # Initialize services
-db = initialize_firebase_admin()
-auth = initialize_firebase_auth()
+db = initialize_firebase()
 
 # Login Functionality
 def show_login():
@@ -88,26 +80,12 @@ def show_login():
     password = st.sidebar.text_input("Password", type="password")
     
     if st.sidebar.button("Login"):
-        if not auth:
-            st.error("Authentication service not initialized")
-            return
-            
-        try:
-            user = auth.sign_in_with_email_and_password(email, password)
+        user = sign_in_with_email_password(email, password)
+        if user:
             st.session_state["user"] = user
             st.session_state["user_email"] = email
             st.success("Logged in successfully!")
             st.rerun()
-        except Exception as e:
-            error_msg = str(e)
-            if "INVALID_EMAIL" in error_msg:
-                st.error("Invalid email address")
-            elif "INVALID_PASSWORD" in error_msg:
-                st.error("Wrong password")
-            elif "TOO_MANY_ATTEMPTS" in error_msg:
-                st.error("Account temporarily disabled - too many attempts")
-            else:
-                st.error(f"Login failed: {error_msg}")
 
 # Disaster Manager Class
 class DisasterManager:
@@ -197,7 +175,7 @@ def show_dashboard():
         alerts = DisasterManager.get_live_alerts()
         if alerts:
             st.subheader("Alert Details")
-            for alert in alerts[:3]:  # Show first 3 alerts
+            for alert in alerts[:3]:
                 with st.expander(f"{alert['type']} in {alert['location']} ({alert['severity']})"):
                     st.write(f"**Description:** {alert['description']}")
                     st.write(f"**Reported at:** {alert.get('created_at', 'Unknown time')}")
@@ -263,7 +241,7 @@ def main():
         show_dashboard()
 
 if __name__ == "__main__":
-    if db and auth:
+    if db:
         main()
     else:
-        st.error("Failed to initialize Firebase services. Please check your configuration.")
+        st.error("Failed to initialize Firebase. Please check your configuration.")
