@@ -1,11 +1,9 @@
 streamlit
-pyrebase4
 firebase-admin
+python-jose
+requests
 streamlit-folium
 folium
 python-dotenv
 geopy
-requests
 pycryptodome
-gcloud
-oauth2client
