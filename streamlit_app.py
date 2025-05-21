@@ -6,19 +6,30 @@ import os
 import folium
 from streamlit_folium import folium_static
 from geopy.geocoders import Nominatim
-import pyrebase4 as pyrebase  # Using pyrebase4 instead of pyrebase
 from datetime import datetime
+
+# Try both pyrebase and pyrebase4 imports
+try:
+    import pyrebase4 as pyrebase
+except ImportError:
+    try:
+        import pyrebase
+    except ImportError as e:
+        st.error(f"Failed to import pyrebase: {str(e)}")
+        st.stop()
 
 # Initialize Firebase Admin
 def initialize_firebase_admin():
     if not firebase_admin._apps:
         try:
+            # Get private key from environment
             private_key = os.environ.get("FIREBASE_PRIVATE_KEY")
             
             if not private_key:
-                st.error("Firebase private key not found")
+                st.error("Firebase private key not found in environment variables")
                 return None
                 
+            # Ensure proper newline formatting
             private_key = private_key.replace("\\n", "\n")
             
             cred_dict = {
@@ -34,6 +45,13 @@ def initialize_firebase_admin():
                 "client_x509_cert_url": os.environ.get("FIREBASE_CLIENT_CERT_URL")
             }
             
+            # Validate all required fields
+            required_fields = ["project_id", "private_key", "client_email"]
+            for field in required_fields:
+                if not cred_dict.get(field):
+                    st.error(f"Missing required Firebase credential: {field}")
+                    return None
+            
             cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred)
             return firestore.client()
@@ -42,7 +60,7 @@ def initialize_firebase_admin():
             return None
     return firestore.client()
 
-# Initialize Firebase Auth with Pyrebase4
+# Initialize Firebase Auth with fallback
 def initialize_firebase_auth():
     try:
         firebaseConfig = {
@@ -52,7 +70,7 @@ def initialize_firebase_auth():
             "storageBucket": f"{os.environ.get('FIREBASE_PROJECT_ID')}.appspot.com",
             "messagingSenderId": os.environ.get("FIREBASE_MESSAGING_SENDER_ID"),
             "appId": os.environ.get("FIREBASE_APP_ID"),
-            "databaseURL": ""  # Only needed if using Realtime Database
+            "databaseURL": ""  # Only if using Realtime Database
         }
         return pyrebase.initialize_app(firebaseConfig).auth()
     except Exception as e:
@@ -86,6 +104,8 @@ def show_login():
                 st.error("Invalid email address")
             elif "INVALID_PASSWORD" in error_msg:
                 st.error("Wrong password")
+            elif "TOO_MANY_ATTEMPTS" in error_msg:
+                st.error("Account temporarily disabled - too many attempts")
             else:
                 st.error(f"Login failed: {error_msg}")
 
