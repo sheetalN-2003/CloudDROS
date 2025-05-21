@@ -6,7 +6,8 @@ import os
 import folium
 from streamlit_folium import folium_static
 from geopy.geocoders import Nominatim
-import pyrebase  # Changed to pyrebase4
+import pyrebase4 as pyrebase  # Using pyrebase4 instead of pyrebase
+from datetime import datetime
 
 # Initialize Firebase Admin
 def initialize_firebase_admin():
@@ -33,13 +34,6 @@ def initialize_firebase_admin():
                 "client_x509_cert_url": os.environ.get("FIREBASE_CLIENT_CERT_URL")
             }
             
-            # Validate required fields
-            required_fields = ["project_id", "private_key", "client_email"]
-            for field in required_fields:
-                if not cred_dict.get(field):
-                    st.error(f"Missing required Firebase credential: {field}")
-                    return None
-            
             cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred)
             return firestore.client()
@@ -48,7 +42,7 @@ def initialize_firebase_admin():
             return None
     return firestore.client()
 
-# Initialize Firebase Auth with better error handling
+# Initialize Firebase Auth with Pyrebase4
 def initialize_firebase_auth():
     try:
         firebaseConfig = {
@@ -58,26 +52,18 @@ def initialize_firebase_auth():
             "storageBucket": f"{os.environ.get('FIREBASE_PROJECT_ID')}.appspot.com",
             "messagingSenderId": os.environ.get("FIREBASE_MESSAGING_SENDER_ID"),
             "appId": os.environ.get("FIREBASE_APP_ID"),
-            "databaseURL": ""  # Add if using Realtime Database
+            "databaseURL": ""  # Only needed if using Realtime Database
         }
-        
-        # Verify required auth fields
-        required_auth_fields = ["apiKey", "authDomain", "projectId"]
-        for field in required_auth_fields:
-            if not firebaseConfig.get(field):
-                st.error(f"Missing required Firebase auth config: {field}")
-                return None
-                
         return pyrebase.initialize_app(firebaseConfig).auth()
     except Exception as e:
         st.error(f"Firebase Auth initialization failed: {str(e)}")
         return None
 
-# Initialize services with validation
+# Initialize services
 db = initialize_firebase_admin()
 auth = initialize_firebase_auth()
 
-# Enhanced Login Functionality
+# Login Functionality
 def show_login():
     st.sidebar.title("Admin Login")
     email = st.sidebar.text_input("Email")
@@ -85,14 +71,13 @@ def show_login():
     
     if st.sidebar.button("Login"):
         if not auth:
-            st.error("Authentication service not available")
+            st.error("Authentication service not initialized")
             return
             
         try:
             user = auth.sign_in_with_email_and_password(email, password)
             st.session_state["user"] = user
             st.session_state["user_email"] = email
-            st.session_state["user_id"] = user['localId']
             st.success("Logged in successfully!")
             st.rerun()
         except Exception as e:
@@ -100,13 +85,11 @@ def show_login():
             if "INVALID_EMAIL" in error_msg:
                 st.error("Invalid email address")
             elif "INVALID_PASSWORD" in error_msg:
-                st.error("Incorrect password")
-            elif "TOO_MANY_ATTEMPTS" in error_msg:
-                st.error("Account temporarily disabled - too many attempts")
+                st.error("Wrong password")
             else:
                 st.error(f"Login failed: {error_msg}")
 
-# Disaster Manager Class with improved error handling
+# Disaster Manager Class
 class DisasterManager:
     @staticmethod
     def create_alert(alert_type, location, severity, description):
@@ -153,52 +136,40 @@ class DisasterManager:
             st.error(f"Error fetching alerts: {str(e)}")
             return []
 
-# Enhanced Dashboard Functions
+# Dashboard Functions
 def show_realtime_map():
-    try:
-        alerts = DisasterManager.get_live_alerts()
-        if not alerts:
-            st.warning("No active disaster alerts")
-            return
-        
-        # Find center point for map
-        valid_coords = [alert for alert in alerts if alert.get('coordinates')]
-        if valid_coords:
-            center = [valid_coords[0]['coordinates']['lat'], valid_coords[0]['coordinates']['lng']]
-        else:
-            center = [20, 0]  # Default center if no coordinates
-            
-        m = folium.Map(location=center, zoom_start=5)
-        
-        for alert in valid_coords:
-            popup_html = f"""
-            <b>Type:</b> {alert['type']}<br>
-            <b>Severity:</b> {alert['severity']}<br>
-            <b>Location:</b> {alert['location']}<br>
-            <b>Reported by:</b> {alert.get('created_by', 'unknown')}
-            """
-            folium.Marker(
-                [alert['coordinates']['lat'], alert['coordinates']['lng']],
-                popup=folium.Popup(popup_html, max_width=300),
-                icon=folium.Icon(
-                    color='red' if alert['severity'] == 'high' else 
-                    'orange' if alert['severity'] == 'medium' else 'green'
-                )
-            ).add_to(m)
-        
-        folium_static(m, width=1000, height=600)
-    except Exception as e:
-        st.error(f"Map rendering failed: {str(e)}")
+    alerts = DisasterManager.get_live_alerts()
+    if not alerts:
+        st.warning("No active disaster alerts")
+        return
+    
+    valid_coords = [alert for alert in alerts if alert.get('coordinates')]
+    center = [valid_coords[0]['coordinates']['lat'], valid_coords[0]['coordinates']['lng']] if valid_coords else [20, 0]
+    
+    m = folium.Map(location=center, zoom_start=5)
+    
+    for alert in valid_coords:
+        popup_html = f"""
+        <b>Type:</b> {alert['type']}<br>
+        <b>Severity:</b> {alert['severity']}<br>
+        <b>Location:</b> {alert['location']}
+        """
+        folium.Marker(
+            [alert['coordinates']['lat'], alert['coordinates']['lng']],
+            popup=folium.Popup(popup_html, max_width=300),
+            icon=folium.Icon(color='red' if alert['severity'] == 'high' else 'orange')
+        ).add_to(m)
+    
+    folium_static(m, width=1000, height=600)
 
 def show_dashboard():
     st.title("🌍 CloudDROS Real-Time Disaster Dashboard")
-    st.write(f"Welcome, {st.session_state.get('user_email', 'Administrator')}")
     
-    tab1, tab2, tab3 = st.tabs(["Live Alerts", "Create Alert", "Resource Management"])
+    tab1, tab2 = st.tabs(["Live Alerts", "Resource Management"])
     
     with tab1:
         st.header("Active Disaster Alerts")
-        if st.button("Refresh Alerts", key="refresh_alerts"):
+        if st.button("Refresh Alerts"):
             st.rerun()
         
         show_realtime_map()
@@ -215,31 +186,28 @@ def show_dashboard():
                         for resource in alert['resources_needed']:
                             st.write(f"- {resource}")
 
-    with tab2:
-        st.header("Create New Alert")
-        with st.form(key="new_alert_form"):
-            alert_type = st.selectbox(
-                "Disaster Type",
-                options=["Earthquake", "Flood", "Wildfire", "Hurricane", "Tornado", "Other"],
-                key="alert_type"
-            )
-            location = st.text_input("Location", key="alert_location")
-            severity = st.select_slider(
-                "Severity Level",
-                options=["low", "medium", "high"],
-                key="alert_severity"
-            )
-            description = st.text_area("Description", key="alert_description")
-            
-            if st.form_submit_button("Create Alert"):
-                if alert_type and location and description:
-                    if DisasterManager.create_alert(alert_type, location, severity, description):
-                        st.success("Alert created successfully!")
-                        st.rerun()
-                else:
-                    st.error("Please fill all required fields")
+        with st.expander("Create New Alert", expanded=False):
+            with st.form(key="new_alert_form"):
+                alert_type = st.selectbox(
+                    "Disaster Type",
+                    options=["Earthquake", "Flood", "Wildfire", "Hurricane", "Tornado", "Other"]
+                )
+                location = st.text_input("Location")
+                severity = st.select_slider(
+                    "Severity Level",
+                    options=["low", "medium", "high"]
+                )
+                description = st.text_area("Description")
+                
+                if st.form_submit_button("Create Alert"):
+                    if alert_type and location and description:
+                        if DisasterManager.create_alert(alert_type, location, severity, description):
+                            st.success("Alert created successfully!")
+                            st.rerun()
+                    else:
+                        st.error("Please fill all required fields")
 
-    with tab3:
+    with tab2:
         st.header("Resource Management")
         if db:
             doc_ref = db.collection("resources").document("main")
@@ -263,7 +231,7 @@ def show_dashboard():
                 st.success("Resources updated successfully!")
                 st.rerun()
 
-# Main App Flow with session management
+# Main App Flow
 def main():
     if "user" not in st.session_state:
         show_login()
